@@ -1,0 +1,11 @@
+{
+    "name": "LibAFL Training",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
+    "runArgs": ["--device", "/dev/vboxdrv:/dev/vboxdrv"],
+    "containerEnv": {
+        "IS_LIBAFL_TRAINING_DEVCONTAINER": "1"
+    }
+}
