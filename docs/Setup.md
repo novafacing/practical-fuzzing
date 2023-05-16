@@ -17,8 +17,8 @@ should follow the setup instructions for your environment before moving on to th
 [next section](#recommendations-for-all-platforms).
 
 - [Linux Host + Docker Development Container](./LinuxHostDocker.md)
-- [Windows Host + Docker Development Container](./WindowsHostDocker.md)
 <!-- TODO -->
+- [Windows Host + Docker Development Container](./WindowsHostDocker.md)
 - [Linux Host, No Docker](./LinuxHostNoDocker.md)
 <!-- TODO -->
 - [Windows Host, No Docker](./WindowsHostNoDocker.md)
