@@ -1,0 +1,23 @@
+@startuml
+
+object decoded {
+    mchunk_prev_size = NA
+    mchunk_size = calculated size
+    fd = unused
+    bk = unused
+    fd_nextsize = unused
+    bk_nextsize = unused
+
+}
+
+object top {
+    mchunk_prev_size = sizeof(decoded) + sizeof(malloc_chunk)
+    mchunk_size = sizeof(av->system_mem) - sizeof(decoded)
+    fd = top
+    bk = top
+    fd_nextsize = unused
+    bk_nextsize = unused
+
+}
+
+@enduml

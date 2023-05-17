@@ -9,6 +9,7 @@
   - [Install On Ubuntu, Debian, SUSE](#install-on-ubuntu-debian-suse)
   - [Install On Fedora, RHEL](#install-on-fedora-rhel)
   - [Test VirtualBox](#test-virtualbox)
+- [Clone This Repository](#clone-this-repository)
 
 
 On Linux, installing the Rust toolchain and additional utilities we need is extremely
@@ -93,3 +94,12 @@ $ vboxmanage --version
 
 If the command shows the version of `VirtualBox`, you are done! If not, please check the
 [troubleshooting](./Troubleshooting.md) guide.
+
+# Clone This Repository
+
+If you haven't already, you will want to clone this repository. You can clone it
+wherever you want. Run:
+
+```sh
+$ git clone https://github.com/intel-sandbox/documentation.security.fuzzing.libafl
+```

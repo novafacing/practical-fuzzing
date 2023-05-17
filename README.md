@@ -1,3 +1,21 @@
+# Table of Contents
+
+- [Table of Contents](#table-of-contents)
+- [LibAFL Training](#libafl-training)
+- [Training Overview](#training-overview)
+- [Training Program](#training-program)
+  - [Chapter 1: Learn the Ropes](#chapter-1-learn-the-ropes)
+  - [Chapter 2: Fuzzing Userspace C/C++](#chapter-2-fuzzing-userspace-cc)
+  - [Chapter 3: Fuzzing Other Languages In Userspace](#chapter-3-fuzzing-other-languages-in-userspace)
+  - [Chapter 4: Extending Fuzzers](#chapter-4-extending-fuzzers)
+  - [Chapter 5: Advanced Usage and Writing Research Fuzzers](#chapter-5-advanced-usage-and-writing-research-fuzzers)
+- [Useful Resources](#useful-resources)
+  - [Rust](#rust)
+  - [Fuzzing](#fuzzing)
+  - [LibAFL](#libafl)
+- [Reporting Issues](#reporting-issues)
+
+
 # LibAFL Training
 
 So, you want to learn how to use
@@ -26,16 +44,28 @@ expert, or even that you have any Rust experience. It *does* however, assume tha
 are an experienced C/C++ programmer, and will explain Rust concepts throughout in terms
 of their C/C++ equivalents.
 
+The training is broken down into a series of exercises that you will work through using
+the provided documentation. In each case, a solution is provided with the full working
+code and any supporting files for you to reference in case you get stuck.
+
+There are many options for your development environment (we'll cover all of them in
+[Chapter 1](#chapter-1-learn-the-ropes)). All code and command line commands should work
+on all of the options, but examples are given as if you are running in the provided Dev
+Container, so paths may be different from what you see on your machine. This is okay!
+
+Throughout the training, there will be many code snippets that aren't intended to be
+written in the program or library the exercise is about. These snippets are just for
+example or as general Rust instruction, and will always include a link to the Rust
+Playground. The Rust Playground is a simple online environment for running, testing, and
+sharing Rust code. You'll see 
+
 # Training Program
 
 ## Chapter 1: Learn the Ropes
 
 1. [Set up your development environment](./docs/Setup.md)
 2. [Learn the basics of the Rust ecosystem](./docs/RustBasics.md)
-3. [Compile and run your first fuzzer](./docs/RunFirstFuzzer.md)
-4. [Write your first fuzz target](./docs/WriteFirstTarget.md)
-5. [Learn the parts of a LibAFL fuzzer](./docs/LearnLibAFLParts.md)
-6. [Write a fuzzer for your first fuzz target](./docs/WriteFirstFuzzer.md)
+3. [Write your first fuzzer](./docs/WriteFirstTarget.md)
 
 ## Chapter 2: Fuzzing Userspace C/C++
 
@@ -100,3 +130,11 @@ throughout in order to understand various Fuzzing, Rust, and LibAFL concepts.
 - [LibAFL Book (Incomplete)](https://aflplus.plus/libafl-book)
 - [Fuzzing101 Blog Posts](https://epi052.gitlab.io/notes-to-self/blog/2021-11-01-fuzzing-101-with-libafl/)
 - [LibAFL Paper](https://www.s3.eurecom.fr/docs/ccs22_fioraldi.pdf)
+
+# Reporting Issues
+
+If you encounter *any* issues or uncertainty while working through this training, please
+contact [Rowan Hart (rowan.hart@intel.com)](mailto:rowan.hart@intel.com) and/or file an
+issue in this repository. The goal with this training is not to provide a framework for
+learning LibAFL yourself, it is to give you a totally complete guide, so anything
+missing or incomplete is considered a breaking bug.

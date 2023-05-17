@@ -1,0 +1,6 @@
+{
+    "rust-analyzer.linkedProjects": [
+        "./first-fuzzer-solution/Cargo.toml",
+        "./first-fuzzer/Cargo.toml"
+    ]
+}
