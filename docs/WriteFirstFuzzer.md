@@ -1,10 +1,10 @@
 # Table of Contents
 
 - [Table of Contents](#table-of-contents)
-- [Create The Fuzzer Crate](#create-the-fuzzer-crate)
+- [Create The Fuzz Target](#create-the-fuzz-target)
   - [Navigate to This Repo](#navigate-to-this-repo)
   - [Create The Crate](#create-the-crate)
-- [Create The Fuzz Target](#create-the-fuzz-target)
+  - [Change The Crate Lib Type](#change-the-crate-lib-type)
   - [Choosing Good Fuzz Targets](#choosing-good-fuzz-targets)
   - [Creating our Fuzz Target](#creating-our-fuzz-target)
   - [Ownership, References, Slices, and Borrowing](#ownership-references-slices-and-borrowing)
@@ -21,9 +21,12 @@
   - [Analyzing the Bug](#analyzing-the-bug)
   - [Summary](#summary)
 - [Create The Fuzzer](#create-the-fuzzer)
-  - [Add a Main Function](#add-a-main-function)
-  - [Compile With SanitizerCoverage](#compile-with-sanitizercoverage)
+  - [Create The Fuzzer Crate](#create-the-fuzzer-crate)
   - [Add the LibAFL Crate](#add-the-libafl-crate)
+  - [Add the Target Crate as a Dependency](#add-the-target-crate-as-a-dependency)
+  - [Create a Build Script](#create-a-build-script)
+    - [Coverage Sanitizer](#coverage-sanitizer)
+    - [The Build Script](#the-build-script)
   - [Import LibAFL](#import-libafl)
   - [Add a Harness](#add-a-harness)
 
@@ -32,7 +35,7 @@ Now that we know the very basics of the Rust ecosystem, we'll dive right in and 
 a fuzzer. Instead of fuzzing a very complex library or binary target right off the bat,
 we'll start as small as we can and fuzz a Rust function.
 
-# Create The Fuzzer Crate
+# Create The Fuzz Target
 
 ## Navigate to This Repo
 
@@ -57,26 +60,51 @@ You should be in `documentation.security.fuzzing.libafl`.
 Create the crate and enter the directory for our first fuzzer with:
 
 ```sh
-$ cargo new --bin ./first-fuzzer
+$ cargo new --lib first-target
+$ cd first-target
 ```
 
-You should have a template Binary crate as we saw in [the Rust
+You should have a template Library crate as we saw in [the Rust
 Basics](./RustBasics.md#creating-a-binary-crate). To make sure everything is working
-correctly, we'll run this binary to make sure we get that "Hello, World!" printout.
+correctly, we'll run the tests `cargo` gives us 
 
 ```sh
-$ cargo run --bin first-fuzzer
-    Finished dev [unoptimized + debuginfo] target(s) in 0.10s
-     Running `target/debug/first-fuzzer`
-Hello, world!
+$ cargo test
+    Finished test [unoptimized + debuginfo] target(s) in 0.13s
+     Running unittests src/lib.rs (target/debug/deps/first_target-d654f36012dfaf5d)
+
+running 1 test
+test tests::it_works ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests first-target
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 ```
 
 If you see that, we're ready to go!
 
-# Create The Fuzz Target
+## Change The Crate Lib Type
 
-In this exercise, we'll create our own fuzz target function, but in practice you'll need
-to find functions to fuzz. This is more of an art than a science.
+Before we move on, we need to change the crate type of our fuzz target's crate. Rust's
+build system supports many crate types, which you can read more about
+[here](https://doc.rust-lang.org/cargo/reference/cargo-targets.html#the-crate-type-field)
+. Add these two lines to your `Cargo.toml` file:
+
+```toml
+[lib]
+crate-type = ["staticlib"]
+```
+
+For most normal rust libraries or crates, this is not necessary. However because we will
+be instrumenting this library for coverage feedback, we will need to build it separately
+and link it into our fuzzer. We'll discuss this further in the fuzzer section.
+
+After changing the crate type, run `cargo build` and `cargo test` again to be sure
+everything is still working as expected.
 
 ## Choosing Good Fuzz Targets
 
@@ -110,11 +138,11 @@ Some additional resources for identifying good fuzz targets:
 ## Creating our Fuzz Target
 
 For our fuzz target, we'll assume we're writing some sort of internet accessible service
-and that the function we create takes some untrusted data. That means it would
-definitely fall into category 1 above. We will create our fuzz target in Rust, and we
-are going to put a bug in it intentionally for the sake of demonstration.
+and that the function we create takes some untrusted data. That means it would falls
+into category 1 above. We will create our fuzz target in Rust, and we are going to put a
+bug in it intentionally for the sake of demonstration.
 
-In your `main.rs` file, we'll first delete the `main` function `cargo` gave us, and 
+In your `lib.rs` file, we'll first delete the all the contents `cargo` gave us, and 
 create a new function. Our fuzz target will be a decoder for a simple encoding format.
 
 Add this (functionally incomplete, but we'll fill in the body later) definition for our
@@ -202,7 +230,7 @@ fn main() {
 
 You'll notice if you build or run this code in the Playground, we get a compile error:
 
-```
+```sh
    Compiling playground v0.0.1 (/playground)
 error[E0382]: borrow of moved value: `x`
  --> src/main.rs:8:25
@@ -290,7 +318,7 @@ fn main() {
 </center>
 <br>
 
-If we run this program now, we'll see:
+If we run this program in the Playground now, we'll see:
 
 ```
 Got Hello, World! I'm here!
@@ -338,7 +366,8 @@ fn main() {
 </center>
 <br>
 
-We can run this now and see that we print out the modified message *both* times:
+We can run this now in the Playground and see that we print out the modified message
+*both* times:
 
 ```
 Got Hello, World! I'm here!
@@ -377,7 +406,7 @@ They can also be created by referencing another data structure. For example a sl
 `Vec` (equivalent to a C++ `std::vector`) is a reference to a sequence of its entries.
 We can also take a slice of a `String`'s characters as a sequence of bytes using
 `.as_bytes()`. Slices are very flexible, and many methods of various types yield slices
-of different underlying element types.
+of different underlying element types (such as `as_bytes()`).
 
 ```rust
 fn main() {
@@ -398,12 +427,15 @@ fn main() {
 
 ### More Resources
 
-These topics are complex and nuanced, so you should read [Understanding Ownership](https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html) from the Rust documentation to understand them more deeply.
+These Rust language topics are complex and nuanced, so you should be sure to read
+[Understanding
+Ownership](https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html) from the
+Rust documentation to understand them more deeply.
 
 ## Implement the Fuzz Target
 
 Now that we know what a *slice* is, we can implement our function. Remember our
-prototype:
+function skeleton from our `lib.rs`:
 
 ```rust
 pub fn decode(mut encoded_input: &[u8]) -> Vec<u8> {
@@ -671,14 +703,14 @@ buffer size correctly, these writes can go out of bounds of the allocated memory
 causing heap corruption.
 
 You can find the full code for the implemented function in
-[main.rs](../first-fuzzer-solution/src/main.rs).
+[lib.rs](../first-target-solution/src/main.rs).
 
 ## Test the Fuzz Target
 
 Like any good developers, we will create a few unit tests for our code before we worry
 about fuzzing or any additional security testing.
 
-We can add our tests directly in `main.rs`:
+We can add our tests directly in `lib.rs`:
 
 ```rust
 #[cfg(test)]
@@ -717,9 +749,9 @@ Note that we have a third test here commented out. Run `cargo test` in your crat
 
 ```sh
 $ cargo test
-   Compiling first-fuzzer v0.1.0 (/workspaces/documentation.security.fuzzing.libafl/first-fuzzer-solution)
-    Finished test [unoptimized + debuginfo] target(s) in 0.29s
-     Running unittests src/main.rs (target/debug/deps/first_fuzzer-90e980ebecb6b0fe)
+   Compiling first-targetv0.1.0 (/workspaces/documentation.security.fuzzing.libafl/first-target)
+    Finished test [unoptimized + debuginfo] target(s) in 0.33s
+     Running unittests src/lib.rs (target/debug/deps/first_target-49e422aa7de12c55)
 
 running 2 tests
 test tests::it_decodes_misc ... ok
@@ -734,23 +766,26 @@ Our unit tests pass! Now lets check out what happens if we uncomment the third f
 
 ```sh
 $ cargo test
-   Compiling first-fuzzer v0.1.0 (/workspaces/documentation.security.fuzzing.libafl/first-fuzzer-solution)
-    Finished test [unoptimized + debuginfo] target(s) in 0.29s
-     Running unittests src/main.rs (target/debug/deps/first_fuzzer-90e980ebecb6b0fe)
+   Compiling first-targetv0.1.0 (/workspaces/documentation.security.fuzzing.libafl/first-target)
+    Finished test [unoptimized + debuginfo] target(s) in 0.27s
+     Running unittests src/lib.rs (target/debug/deps/first_target-49e422aa7de12c55)
 
 running 3 tests
 malloc(): corrupted top size
-error: test failed, to rerun pass `--bin first-fuzzer`
+error: test failed, to rerun pass `--lib`
 
 Caused by:
-  process didn't exit successfully: `/workspaces/documentation.security.fuzzing.libafl/first-fuzzer-solution/target/debug/deps/first_fuzzer-90e980ebecb6b0fe` (signal: 6, SIGABRT: process abort signal)
+  process didn't exit successfully: `/workspaces/documentation.security.fuzzing.libafl/first-target/target/debug/deps/first_target-49e422aa7de12c55` (signal: 6, SIGABRT: process abort signal)
 ```
 
 
 The program crashes with an error in `libc` `malloc`. We've corrupted the top chunk
 size, so malloc crashes. We can investigate exactly where this error occurs in the
-malloc source code by searching the error message, and we find out it happens [here](https://github.com/bminor/glibc/blob/7c32cb7dd88cf100b0b412163896e30aa2ee671a/malloc/malloc.c#L4359). What's happening
-is that we only have one allocation in our program, so the heap looks like this:
+malloc source code by searching the error message, and we find out it happens
+[here](https://github.com/bminor/glibc/blob/7c32cb7dd88cf100b0b412163896e30aa2ee671a/malloc/malloc.c#L4359).
+What's happening is that we only have one allocation in our program, so the heap looks
+like the image below. Recall the heap grows from low to high addresses (left to right
+below).
 
 <center>
 <img src="./diagrams/WriteFirstFuzzerTopChunk.svg" />
@@ -764,7 +799,7 @@ of the top chunk. This can lead to an attack known as [House of
 Force](https://github.com/shellphish/how2heap/blob/master/glibc_2.27/house_of_force.c).
 This specific attack isn't important for our fuzzing, but it's a good case study of how
 dangerous an error as simple as naive size calculation can be. Not to mention, we end up
-incorrectly handling trailing '%' characters!
+incorrectly handling trailing `%` characters!
 
 If you don't see an error on your system, that's ok. It's somewhat dependent on what
 `libc` version is in use (if you are on Linux), and what size of overflow we end up
@@ -783,52 +818,28 @@ In this section, we learned about:
 - Rust loops, iterators, raw pointer arithmetic, `if let` bindings, and ranges
 - Rust tests
 - Triaging a simple heap overflow by searching on GitHub
-
-You can view the checkpoint at this point in the exercise [here](https://github.com/intel-sandbox/documentation.security.fuzzing.libafl/blob/first-fuzzer-solution-fuzz-target/first-fuzzer-solution/src/main.rs).
+<!--TODO -->
+You can view the checkpoint at this point in the exercise [here]().
 
 # Create The Fuzzer
 
 Now that we have an appropriate target and we know there's a bug in it, it's time to
 write our fuzzer!
 
-## Add a Main Function
+## Create The Fuzzer Crate
 
-We'll add a `main` function with nothing in it first, so that we can build without
-errors. Add this at the bottom of your `main.rs`:
-
-```rust
-fn main() {}
-```
-
-Now, we can build our project. Run:
+Navigate back to the root of this repository (you should be in
+`documentation.security.fuzzing.libafl`). Then, create a fuzzer crate and navigate to
+it, then run it to make sure everything is set up correctly:
 
 ```sh
-$ cargo build
-   Compiling first-fuzzer v0.1.0 (/workspaces/documentation.security.fuzzing.libafl/first-fuzzer-solution)
-    Finished dev [unoptimized + debuginfo] target(s) in 0.26s
-```
-
-You should see no errors. We can also run our program (of course, it will do nothing yet
-):
-
-```sh
-$ cargo run
+$ cargo new --bin first-fuzzer
+$ cd first-fuzzer
+$ cargo run --bin first-fuzzer
     Finished dev [unoptimized + debuginfo] target(s) in 0.00s
      Running `target/debug/first-fuzzer`
+Hello, world!
 ```
-
-## Compile With SanitizerCoverage
-
-We are going to be fuzzing the `decode` function we just wrote, so we need a way to
-obtain *coverage feedback* when we execute the function in order to guide our fuzzer. To
-do this, we will use LLVM's
-[SanitizerCoverage](https://clang.llvm.org/docs/SanitizerCoverage.html) to instrument
-our program. In this exercise, our fuzz target is in the same binary as our fuzzer, but
-that will frequently not be the case. In general, we will instrument our *target* with
-coverage feedback.
-
-We need to take a couple steps to allow us to build with `SanitizerCoverage` support.
-
 
 ## Add the LibAFL Crate
 
@@ -848,11 +859,145 @@ Let's check to make sure we can build and run with the dependency added.
 
 ```sh
 $ cargo build
-$ cargo run
+$ cargo run --bin first-fuzzer
 ```
 
 You should have the same result as above, but you'll see `libafl` and its
 sub-dependencies compile.
+
+## Add the Target Crate as a Dependency
+
+In order to link in our fuzz target and call it from our fuzzer, we need to add it as a
+dependency. Run:
+
+
+```sh
+$ cargo add --path ../first-target
+```
+
+You should see the following line appear in your `Cargo.toml` file under
+`[dependencies]`:
+
+```toml
+first-target = { version = "0.1.0", path = "../first-target" }
+```
+
+## Create a Build Script
+
+`cargo` supports *build scripts* (you can read the documentation on them
+[here](https://doc.rust-lang.org/cargo/reference/build-scripts.html)). By creating a
+`build.rs` file in our crate directory, `cargo` will run it before compiling the crate.
+
+`build.rs` scripts provide a few key features, notably the ability to modify or add
+linking information during crate compilation. We need our build script to do two things:
+
+1. Compile `first-target` with the coverage sanitizer enabled
+2. Tell `cargo` (and through it, `rustc`) to link with the coverage sanitized library
+   when compiling the fuzzer binary
+
+### Coverage Sanitizer
+
+Before we use it, we need a bit of background on what a *coverage sanitizer* actually is,
+as well as what sanitizer interface we will use for this fuzzer.
+
+LLVM and MSVC provide a feature called
+[SanitizerCoverage](https://clang.llvm.org/docs/SanitizerCoverage.html). Code coverage
+is a relatively simple concept, and it is explained well by the documentation. Our goal
+is simply to measure *how much* of the code we care about is executed as well as *which
+parts* of the code we care about are executed for each fuzzing run.
+
+`SanitizerCoverage` is implemented at the LLVM level of compilation, and has several
+optional implementations:
+
+- PC Trace: a function is called on each control flow edge in the program.
+- Guards: a function is called on each control flow edge in the program that is only
+  triggered if a guard value is true. Same as PC trace with guards added.
+- Counters: a per-edge counter variable is incremented on each traversal of the edge
+- PC Table: Adds a table describing whether each block starting at `pc` is a function
+  entry block or not
+
+The exact arguments change over time with new LLVM releases, but [the LLVM
+Doxygen](https://llvm.org/doxygen/SanitizerCoverage_8cpp.html) describes all of them.
+
+For this fuzzer, we will use the following options for `SanitizerCoverage`:
+
+- `-sanitizer-coverage-level=3`: Level 3 is all blocks and critical edges.
+- `-sanitizer-coverage-inline-8bit-counters`: Use counters to track how many times each
+  edge is hit.
+- `-sanitizer-coverage-prune-blocks=0`: Don't remove coverage info from any blocks.
+- `passes=sancov-module`: Tells LLVM to run the `SanitizerCoverage` module.
+
+### The Build Script
+
+To pass arguments to the compilation of a specific dependency, we can use the
+`cargo rustc` subprogram. This lets us pass arguments to `rustc`, the Rust compiler, as
+well as to [*LLVM*](https://llvm.org), which `rustc` uses for final code generation and
+additional optimization. We'll use `std::process::Command`, which is similar to using
+`subprocess.Popen` in Python or `system` in C, although much more flexible.
+
+We'll walk through the `cargo rustc` arguments that we'll add in addition to the
+`SanitizerCoverage` flags.
+
+- `-p first-target-solution`: Tell `rustc` to just build the target with these arguments,
+  rather than pass these arguments to *all* the code we're compiling.
+- `--target-dir target/first-target/`: Tell `rustc` to build in a subdirectory of the
+  default `target` directory, to avoid conflicting with the currently running build
+  process' lock on the `target` directory.
+- `link-dead-code`: Don't prune any unused code from the compilation result.
+- `lto=no`: Don't do link-time optimization, because it might remove some code or
+   instrumentation.
+- `--emit=dep-info,link`: Emit linking and dependency information.
+
+```rust
+use std::process::Command;
+
+fn main() {
+    let status = Command::new("cargo")
+        .arg("rustc")
+        .arg("-p")
+        .arg("first-target")
+        .arg("--target-dir")
+        .arg("target/first-target/")
+        .arg("--")
+        .arg("-C")
+        .arg("prefer-dynamic")
+        .arg("-C")
+        .arg("passes=sancov-module")
+        .arg("-C")
+        .arg("llvm-args=-sanitizer-coverage-level=3")
+        .arg("-C")
+        .arg("llvm-args=-sanitizer-coverage-inline-8bit-counters")
+        .arg("-C")
+        .arg("llvm-args=-sanitizer-coverage-prune-blocks=0")
+        .arg("-C")
+        .arg("link-dead-code")
+        .arg("-C")
+        .arg("lto=no")
+        .arg("--emit=dep-info,link")
+        .status()
+        .expect("Failed to spawn Cargo");
+
+    assert!(status.success(), "Target build command failed");
+```
+
+We'll also use some specially formatted print statements in our build script to instruct
+`cargo` to link with the library. Note the `env!` macro, which grabs the value of an
+environment variable at compile time (and is a compile error if the variable isn't
+present). The `CARGO_MANIFEST_DIR` environment variable is set automatically by `cargo`
+during build script compilation and execution. You can check the full list of these
+environment variables
+[here](https://doc.rust-lang.org/cargo/reference/environment-variables.html). You can
+also check out the full list of special print messages
+[here](https://doc.rust-lang.org/cargo/reference/build-scripts.html).
+
+```rust
+    println!("cargo:rustc-link-lib=first_target");
+    println!(
+        "cargo:rustc-link-search={}/target/first-target/debug/",
+        env!("CARGO_MANIFEST_DIR")
+    );
+}
+```
 
 ## Import LibAFL
 

@@ -64,6 +64,7 @@ for managing:
   in our code, or `clippy` to check for even *more* warnings and errors.
 - `cargo new` or `cargo init`: Create a new crate or initialize a directory as a crate.
 - `cargo test`: Run tests in the current crate.
+- `cargo rustc`: Pass arguments directly to `rustc`
 
 # Creating A Library Crate
 
