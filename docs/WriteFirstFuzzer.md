@@ -22,7 +22,10 @@
   - [Summary](#summary)
 - [Create The Fuzzer](#create-the-fuzzer)
   - [Add a Main Function](#add-a-main-function)
-  - [Add the Crate](#add-the-crate)
+  - [Compile With SanitizerCoverage](#compile-with-sanitizercoverage)
+  - [Add the LibAFL Crate](#add-the-libafl-crate)
+  - [Import LibAFL](#import-libafl)
+  - [Add a Harness](#add-a-harness)
 
 
 Now that we know the very basics of the Rust ecosystem, we'll dive right in and build
@@ -781,6 +784,8 @@ In this section, we learned about:
 - Rust tests
 - Triaging a simple heap overflow by searching on GitHub
 
+You can view the checkpoint at this point in the exercise [here](https://github.com/intel-sandbox/documentation.security.fuzzing.libafl/blob/first-fuzzer-solution-fuzz-target/first-fuzzer-solution/src/main.rs).
+
 # Create The Fuzzer
 
 Now that we have an appropriate target and we know there's a bug in it, it's time to
@@ -788,6 +793,81 @@ write our fuzzer!
 
 ## Add a Main Function
 
-## Add the Crate
+We'll add a `main` function with nothing in it first, so that we can build without
+errors. Add this at the bottom of your `main.rs`:
+
+```rust
+fn main() {}
+```
+
+Now, we can build our project. Run:
+
+```sh
+$ cargo build
+   Compiling first-fuzzer v0.1.0 (/workspaces/documentation.security.fuzzing.libafl/first-fuzzer-solution)
+    Finished dev [unoptimized + debuginfo] target(s) in 0.26s
+```
+
+You should see no errors. We can also run our program (of course, it will do nothing yet
+):
+
+```sh
+$ cargo run
+    Finished dev [unoptimized + debuginfo] target(s) in 0.00s
+     Running `target/debug/first-fuzzer`
+```
+
+## Compile With SanitizerCoverage
+
+We are going to be fuzzing the `decode` function we just wrote, so we need a way to
+obtain *coverage feedback* when we execute the function in order to guide our fuzzer. To
+do this, we will use LLVM's
+[SanitizerCoverage](https://clang.llvm.org/docs/SanitizerCoverage.html) to instrument
+our program. In this exercise, our fuzz target is in the same binary as our fuzzer, but
+that will frequently not be the case. In general, we will instrument our *target* with
+coverage feedback.
+
+We need to take a couple steps to allow us to build with `SanitizerCoverage` support.
+
+
+## Add the LibAFL Crate
+
+To add LibAFL as a dependency to our crate, we can just run:
+
+```sh
+$ cargo add libafl@0.10.0
+```
+
+This may take a minute because it will update your `crates.io` index if this is the
+first time you have added a `crates.io` dependency.
+
+Check that the depedency is added by viewing the `Cargo.toml` for the crate. It should
+have `libafl = "0.10.0"` under the `[dependencies]` section.
+
+Let's check to make sure we can build and run with the dependency added.
+
+```sh
+$ cargo build
+$ cargo run
+```
+
+You should have the same result as above, but you'll see `libafl` and its
+sub-dependencies compile.
+
+## Import LibAFL
+
+Before we can use LibAFL in our code, we need to import it. At the top of your `main.rs`
+file, add:
+
+```rust
+use libafl::prelude::*;
+```
+
+## Add a Harness
+
+
+
+
+
 
 
