@@ -1,6 +1,7 @@
 use std::{env::var, process::Command};
 
 fn main() {
+    println!("cargo:rerun-if-changed=target/first-target/");
     let status = Command::new("cargo")
         .arg("rustc")
         .arg("-p")
@@ -33,9 +34,9 @@ fn main() {
 
     assert!(status.success(), "Target build command failed");
 
-    println!("cargo:rustc-link-lib=first_target");
     println!(
         "cargo:rustc-link-search={}/target/first-target/debug/",
         env!("CARGO_MANIFEST_DIR")
     );
+    println!("cargo:rustc-link-lib=static=first_target");
 }

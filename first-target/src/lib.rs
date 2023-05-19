@@ -3,6 +3,14 @@ use std::{
     str::from_utf8_unchecked,
 };
 
+pub use libafl_targets::counters_maps_observer as real_counters_maps_observer;
+use libafl_targets::CountersMultiMapObserver;
+
+#[export_name = "counters_maps_observer"]
+pub fn counters_maps_observer(name: &'static str) -> CountersMultiMapObserver<false> {
+    unsafe { real_counters_maps_observer(name) }
+}
+
 /// NOTE: This function is intentionally insecure and should *never* be used in real code! It is a
 /// fuzz target for learning to use LibAFL
 ///

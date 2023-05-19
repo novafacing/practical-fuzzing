@@ -22,12 +22,11 @@
   - [Summary](#summary)
 - [Create The Fuzzer](#create-the-fuzzer)
   - [Create The Fuzzer Crate](#create-the-fuzzer-crate)
-  - [Add the LibAFL Crate](#add-the-libafl-crate)
+  - [Add the LibAFL Crate as a Dependency](#add-the-libafl-crate-as-a-dependency)
   - [Add the Target Crate as a Dependency](#add-the-target-crate-as-a-dependency)
   - [Create a Build Script](#create-a-build-script)
     - [Coverage Sanitizer](#coverage-sanitizer)
     - [The Build Script](#the-build-script)
-  - [Import LibAFL](#import-libafl)
   - [Add a Harness](#add-a-harness)
 
 
@@ -841,7 +840,7 @@ $ cargo run --bin first-fuzzer
 Hello, world!
 ```
 
-## Add the LibAFL Crate
+## Add the LibAFL Crate as a Dependency
 
 To add LibAFL as a dependency to our crate, we can just run:
 
@@ -865,11 +864,45 @@ $ cargo run --bin first-fuzzer
 You should have the same result as above, but you'll see `libafl` and its
 sub-dependencies compile.
 
+## Add LibAFL-Targets Crate as a Dependency
+
+The `libafl_targets` crate provides target-specific functionality and utilities designed
+to be used with `libafl`. In our case, it provides an easy way to interact with
+`SanitizerCoverage`.
+
+### Features
+
+`libafl_targets` (and for that matter, most Rust crates) uses *features* to conditionally
+compile parts of its functionality. For our uses, we need the feature `sancov_8bit`
+because we'll be using 8-bit counter mode for `SanitizerCoverage`. You can read about
+features [here](https://doc.rust-lang.org/cargo/reference/features.html).
+
+
+<!-- TODO: Fix by uncommenting this and removing the lines + code block below once
+sancov-observer is merged 
+
+We can add `libafl_targets` with the `sancov_8bit` feature to our crate by running:
+
+```sh
+$ cargo add libafl_targets --features sancov_8bit
+```
+-->
+
+<!-- TODO Delete from here until next comment once sancov-observer is merged -->
+We can add `libafl_targets`  with the `sancov_8bit` feature to our crate by adding this
+line to our `Cargo.toml` file under the `[dependencies]` section:
+
+```toml
+libafl_targets = { git = "https://github.com/novafacing/LibAFL.git", branch = "novafacing/sancov-observer", version = "0.10.0", features = [
+    "sancov_8bit",
+] }
+```
+<!-- END TODO -->
+
 ## Add the Target Crate as a Dependency
 
 In order to link in our fuzz target and call it from our fuzzer, we need to add it as a
 dependency. Run:
-
 
 ```sh
 $ cargo add --path ../first-target
@@ -947,9 +980,12 @@ We'll walk through the `cargo rustc` arguments that we'll add in addition to the
 - `lto=no`: Don't do link-time optimization, because it might remove some code or
    instrumentation.
 - `--emit=dep-info,link`: Emit linking and dependency information.
+- `opt-level={}`: We just pass the opt level we are compiling the fuzzer at to the
+  target as well. This allows us to use `--release`.
+
 
 ```rust
-use std::process::Command;
+use std::{env::var, process::Command};
 
 fn main() {
     let status = Command::new("cargo")
@@ -959,6 +995,11 @@ fn main() {
         .arg("--target-dir")
         .arg("target/first-target/")
         .arg("--")
+        .arg("-C")
+        .arg(format!(
+            "opt-level={}",
+            var("OPT_LEVEL").expect("No OPT_LEVEL variable set")
+        ))
         .arg("-C")
         .arg("prefer-dynamic")
         .arg("-C")
@@ -978,6 +1019,7 @@ fn main() {
         .expect("Failed to spawn Cargo");
 
     assert!(status.success(), "Target build command failed");
+
 ```
 
 We'll also use some specially formatted print statements in our build script to instruct
@@ -999,20 +1041,10 @@ also check out the full list of special print messages
 }
 ```
 
-## Import LibAFL
-
-Before we can use LibAFL in our code, we need to import it. At the top of your `main.rs`
-file, add:
-
-```rust
-use libafl::prelude::*;
-```
-
 ## Add a Harness
 
+The first part of our fuzzer we'll create is our harness. In our case, this is just a
+small *closure* that will call our `decode` function each time it is invoked with a new
+test case.
 
-
-
-
-
-
+We need to `use` a few

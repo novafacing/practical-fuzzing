@@ -9,3 +9,6 @@ edition = "2021"
 crate-type = ["staticlib"]
 
 [dependencies]
+libafl_targets = { git = "https://github.com/novafacing/LibAFL.git", branch = "novafacing/sancov-observer", version = "0.10.0", features = [
+    "sancov_8bit",
+] }
