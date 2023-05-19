@@ -65,7 +65,7 @@ sharing Rust code. You'll see
 
 1. [Set up your development environment](./docs/Setup.md)
 2. [Learn the basics of the Rust ecosystem](./docs/RustBasics.md)
-3. [Write your first fuzzer](./docs/WriteFirstTarget.md)
+3. [Write your first fuzzer](./docs/WriteFirstFuzzer.md)
 
 ## Chapter 2: Fuzzing Userspace C/C++
 
