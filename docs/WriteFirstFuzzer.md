@@ -35,6 +35,8 @@
 - [Implement The Fuzzer](#implement-the-fuzzer)
   - [Delete The Template `main.rs`](#delete-the-template-mainrs)
   - [Set The Global Allocator](#set-the-global-allocator)
+  - [Import Coverage Observer](#import-coverage-observer)
+  - [Declare Functions From Target](#declare-functions-from-target)
   - [Add An Argument Parser](#add-an-argument-parser)
     - [Derive Macros](#derive-macros)
     - [`cargo build`](#cargo-build)
@@ -895,8 +897,9 @@ In this section, we learned about:
 - Rust loops, iterators, raw pointer arithmetic, `if let` bindings, and ranges
 - Rust tests
 - Triaging a simple heap overflow by searching on GitHub
+
 <!--TODO -->
-You can view the checkpoint at this point in the exercise [here]().
+You can view the finished 
 
 # Create The Fuzzer
 
@@ -1156,6 +1159,33 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 This lets us use a different allocator in our fuzzer than is being called by our target,
 so when the target malloc state gets corrupted we won't crash the fuzzer.
+
+## Import Coverage Observer
+
+We'll discuss the coverage observer in greater detail later, but you can `use` it from
+the `libafl_targets` dependency like so:
+
+
+```rust
+use libafl_targets::CountersMultiMapObserver;
+```
+
+This is necessary so we have the type of the observer available to us.
+
+## Declare Functions From Target
+
+Because we are linking with our target statically, we need to declare the functions
+we want to call from it as `extern`. This has the same meaning as in C/C++, and informs
+the compiler that we will link with these symbols, but we are not defining them.
+
+Add the following block below the allocator definition.
+
+```rust
+extern "Rust" {
+    fn decode(encoded_input: &[u8]) -> Vec<u8>;
+    fn counters_maps_observer(name: &'static str) -> CountersMultiMapObserver<false>;
+}
+```
 
 ## Add An Argument Parser
 
