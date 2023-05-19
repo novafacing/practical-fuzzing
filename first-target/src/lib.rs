@@ -3,14 +3,6 @@ use std::{
     str::from_utf8_unchecked,
 };
 
-pub use libafl_targets::counters_maps_observer as real_counters_maps_observer;
-use libafl_targets::CountersMultiMapObserver;
-
-#[export_name = "counters_maps_observer"]
-pub fn counters_maps_observer(name: &'static str) -> CountersMultiMapObserver<false> {
-    unsafe { real_counters_maps_observer(name) }
-}
-
 /// NOTE: This function is intentionally insecure and should *never* be used in real code! It is a
 /// fuzz target for learning to use LibAFL
 ///
@@ -19,7 +11,8 @@ pub fn counters_maps_observer(name: &'static str) -> CountersMultiMapObserver<fa
 pub fn decode(mut encoded_input: &[u8]) -> Vec<u8> {
     let decoded_len =
         encoded_input.len() - (encoded_input.iter().filter(|c| **c == b'%').count() * 2);
-    let decoded_layout = Layout::array::<u8>(decoded_len).expect("Could not create layout");
+    let decoded_layout = Layout::array::<u8>(decoded_len)
+        .unwrap_or_else(|_| panic!("Could not create layout with decoded_len = {}", decoded_len));
 
     if decoded_len == 0 {
         return Vec::new();
@@ -113,4 +106,22 @@ mod tests {
     // fn it_crashes() {
     //     println!("{:?}", decode("aaaaaaaaaaaaaaaa%%%%%%%%%%%%".as_bytes()));
     // }
+
+    #[test]
+    fn it_crashed_by_fuzzer() {
+        let test = include_bytes!("../testcases/26c0aa3cb05a20f7");
+        decode(test);
+        let test = include_bytes!("../testcases/6b47dcc6e8baf69e");
+        decode(test);
+        let test = include_bytes!("../testcases/6f40a2bea93ee0a3");
+        decode(test);
+        let test = include_bytes!("../testcases/71fd31f6e02fb1d5");
+        decode(test);
+        let test = include_bytes!("../testcases/a3ee050a83870a18");
+        decode(test);
+        let test = include_bytes!("../testcases/e54c970569a44481");
+        decode(test);
+        let test = include_bytes!("../testcases/e552cbba2b3e2764");
+        decode(test);
+    }
 }

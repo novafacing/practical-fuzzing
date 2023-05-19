@@ -1,12 +1,9 @@
-use std::path::PathBuf;
-
 use clap::Parser;
 use libafl::{
-    feedback_or,
     prelude::{
-        current_nanos, havoc_mutations, tuple_list, AsSlice, BytesInput, CrashFeedback, ExitKind,
-        HasTargetBytes, HitcountsIterableMapObserver, InMemoryCorpus, InProcessExecutor,
-        MaxMapFeedback, OnDiskCorpus, SimpleEventManager, SimpleMonitor, StdRand,
+        current_nanos, havoc_mutations, tuple_list, AflMapFeedback, AsSlice, BytesInput,
+        CrashFeedback, ExitKind, HasTargetBytes, HitcountsIterableMapObserver, InMemoryCorpus,
+        InProcessExecutor, OnDiskCorpus, SimpleEventManager, SimpleMonitor, StdRand,
         StdScheduledMutator,
     },
     schedulers::QueueScheduler,
@@ -16,6 +13,7 @@ use libafl::{
 };
 use libafl_targets::CountersMultiMapObserver;
 use mimalloc::MiMalloc;
+use std::path::PathBuf;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -31,35 +29,58 @@ struct Args {
     /// Corpus directory
     corpus: PathBuf,
     #[arg(short, long)]
-    /// Corpus directory
+    /// Solutions directory
     solutions: PathBuf,
 }
 
 fn main() {
     let args = Args::parse();
+
+    // The harness: this is a closure that is run repeatedly with new test cases (inputs)
+    // by the fuzzer. It takes the input as bytes and calls the decode function. The decode
+    // function will either crash, or it will succeed in which case we return [`ExitKind::Ok`]
+    let mut harness = |input: &BytesInput| {
+        let target = input.target_bytes();
+        let buf = target.as_slice();
+        println!("Fuzzing with {:?} ({})", buf, buf.len());
+        unsafe { decode(buf) };
+        ExitKind::Ok
+    };
+
     let counters_observer =
         HitcountsIterableMapObserver::new(unsafe { counters_maps_observer("counters-maps") });
-    let counters_feedback = MaxMapFeedback::new(&counters_observer);
-    let mut feedback = feedback_or!(counters_feedback);
+    let mut counters_feedback = AflMapFeedback::new(&counters_observer);
 
     let mut objective = CrashFeedback::new();
+
+    let rand = StdRand::with_seed(current_nanos());
+
+    let corpus = InMemoryCorpus::new();
+
+    let solutions = OnDiskCorpus::new(&args.solutions).unwrap_or_else(|e| {
+        panic!(
+            "Unable to create OnDiskCorpus at {}: {}",
+            args.solutions.display(),
+            e
+        )
+    });
 
     // create a State from scratch
     let mut state = StdState::new(
         // RNG
-        StdRand::with_seed(current_nanos()),
+        rand,
         // Corpus that will be evolved, we keep it in memory for performance
-        InMemoryCorpus::new(),
+        corpus,
         // Corpus in which we store solutions (crashes in this example),
         // on disk so the user can get them after stopping the fuzzer
-        OnDiskCorpus::new(args.solutions).unwrap(),
+        solutions,
         // States of the feedbacks.
         // The feedbacks can report the data that should persist in the State.
-        &mut feedback,
+        &mut counters_feedback,
         // Same for objective feedbacks
         &mut objective,
     )
-    .unwrap();
+    .expect("Failed to create state");
 
     // The Monitor trait define how the fuzzer stats are displayed to the user
     let mon = SimpleMonitor::new(|s| println!("{}", s));
@@ -73,16 +94,7 @@ fn main() {
     let scheduler = QueueScheduler::new();
 
     // A fuzzer with feedbacks and a corpus scheduler
-    let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
-
-    // Create the executor for an in-process function with just one observer
-    let mut harness = |input: &BytesInput| {
-        let target = input.target_bytes();
-        let buf = target.as_slice();
-        println!("Fuzzing with {:?} ({})", buf, buf.len());
-        unsafe { decode(buf) };
-        ExitKind::Ok
-    };
+    let mut fuzzer = StdFuzzer::new(scheduler, counters_feedback, objective);
 
     let mut executor = InProcessExecutor::new(
         &mut harness,

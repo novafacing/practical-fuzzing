@@ -5,6 +5,9 @@
   - [Navigate to This Repo](#navigate-to-this-repo)
   - [Create The Crate](#create-the-crate)
   - [Change The Crate Lib Type](#change-the-crate-lib-type)
+  - [Add LibAFL-Targets Crate as a Dependency](#add-libafl-targets-crate-as-a-dependency)
+    - [Features](#features)
+    - [Add The Dependency](#add-the-dependency)
   - [Choosing Good Fuzz Targets](#choosing-good-fuzz-targets)
   - [Creating our Fuzz Target](#creating-our-fuzz-target)
   - [Ownership, References, Slices, and Borrowing](#ownership-references-slices-and-borrowing)
@@ -23,11 +26,47 @@
 - [Create The Fuzzer](#create-the-fuzzer)
   - [Create The Fuzzer Crate](#create-the-fuzzer-crate)
   - [Add the LibAFL Crate as a Dependency](#add-the-libafl-crate-as-a-dependency)
+  - [Add LibAFL-Targets Crate as a Dependency](#add-libafl-targets-crate-as-a-dependency-1)
   - [Add the Target Crate as a Dependency](#add-the-target-crate-as-a-dependency)
+  - [Add Additional Dependencies](#add-additional-dependencies)
   - [Create a Build Script](#create-a-build-script)
     - [Coverage Sanitizer](#coverage-sanitizer)
     - [The Build Script](#the-build-script)
+- [Implement The Fuzzer](#implement-the-fuzzer)
+  - [Delete The Template `main.rs`](#delete-the-template-mainrs)
+  - [Set The Global Allocator](#set-the-global-allocator)
+  - [Add An Argument Parser](#add-an-argument-parser)
+    - [Derive Macros](#derive-macros)
+    - [`cargo build`](#cargo-build)
+    - [`cargo run`](#cargo-run)
   - [Add a Harness](#add-a-harness)
+    - [Closures](#closures)
+    - [Create A Harness Closure](#create-a-harness-closure)
+  - [Add Observers and Feedbacks](#add-observers-and-feedbacks)
+    - [Observers](#observers)
+    - [Feedbacks](#feedbacks)
+    - [Add Our Observers and Feedbacks](#add-our-observers-and-feedbacks)
+  - [Add Random Provider, Corpus, Solution Corpus, and State](#add-random-provider-corpus-solution-corpus-and-state)
+    - [Random Provider](#random-provider)
+    - [Corpus](#corpus)
+    - [Solution Corpus](#solution-corpus)
+    - [State](#state)
+  - [Add Monitor, Event Manager, Scheduler, and Fuzzer](#add-monitor-event-manager-scheduler-and-fuzzer)
+    - [Monitor](#monitor)
+    - [Event Manager](#event-manager)
+    - [Scheduler](#scheduler)
+    - [Fuzzer](#fuzzer)
+  - [Add Executor, Mutator, and Stages](#add-executor-mutator-and-stages)
+    - [Executor](#executor)
+    - [Mutator](#mutator)
+    - [Stages](#stages)
+  - [Load the Input Corpus](#load-the-input-corpus)
+  - [Start The Fuzz Loop](#start-the-fuzz-loop)
+- [Run The Fuzzer](#run-the-fuzzer)
+  - [Add A Corpus Entry](#add-a-corpus-entry)
+  - [Launch the Fuzzer](#launch-the-fuzzer)
+  - [Triage The Crash](#triage-the-crash)
+- [Summary](#summary-1)
 
 
 Now that we know the very basics of the Rust ecosystem, we'll dive right in and build
@@ -104,6 +143,45 @@ and link it into our fuzzer. We'll discuss this further in the fuzzer section.
 
 After changing the crate type, run `cargo build` and `cargo test` again to be sure
 everything is still working as expected.
+
+## Add LibAFL-Targets Crate as a Dependency
+
+The `libafl_targets` crate provides target-specific functionality and *runtimes* for
+various instrumentation mechanisms designed to be used with `libafl`. In our case, it
+provides an easy way to interact with `SanitizerCoverage`. We'll go in depth on our
+instrumentation [later](#coverage-sanitizer), for now we'll just add the crate to our
+`Cargo.toml`
+
+### Features
+
+`libafl_targets` (and for that matter, most Rust crates) uses *features* to conditionally
+compile parts of its functionality. For our uses, we need the feature `sancov_8bit`
+because we'll be using 8-bit counter mode for `SanitizerCoverage`. You can read about
+features [here](https://doc.rust-lang.org/cargo/reference/features.html).
+
+### Add The Dependency
+
+
+<!-- TODO: Fix by uncommenting this and removing the lines + code block below once
+sancov-observer is merged 
+
+We can add `libafl_targets` with the `sancov_8bit` feature to our crate by running:
+
+```sh
+$ cargo add libafl_targets --features sancov_8bit
+```
+-->
+
+<!-- TODO Delete from here until next comment once sancov-observer is merged -->
+We can add `libafl_targets`  with the `sancov_8bit` feature to our crate by adding this
+line to our `Cargo.toml` file under the `[dependencies]` section:
+
+```toml
+libafl_targets = { git = "https://github.com/novafacing/LibAFL.git", branch = "novafacing/sancov-observer", version = "0.10.0", features = [
+    "sancov_8bit",
+] }
+```
+<!-- END TODO -->
 
 ## Choosing Good Fuzz Targets
 
@@ -866,16 +944,9 @@ sub-dependencies compile.
 
 ## Add LibAFL-Targets Crate as a Dependency
 
-The `libafl_targets` crate provides target-specific functionality and utilities designed
-to be used with `libafl`. In our case, it provides an easy way to interact with
-`SanitizerCoverage`.
-
-### Features
-
-`libafl_targets` (and for that matter, most Rust crates) uses *features* to conditionally
-compile parts of its functionality. For our uses, we need the feature `sancov_8bit`
-because we'll be using 8-bit counter mode for `SanitizerCoverage`. You can read about
-features [here](https://doc.rust-lang.org/cargo/reference/features.html).
+We need to utilize data structures from `libafl_targets` to interpret the coverage
+information being gathered by the instrumentation. To do that, we'll depend on the
+crate the same way we did in our target.
 
 
 <!-- TODO: Fix by uncommenting this and removing the lines + code block below once
@@ -913,6 +984,22 @@ You should see the following line appear in your `Cargo.toml` file under
 
 ```toml
 first-target = { version = "0.1.0", path = "../first-target" }
+```
+
+## Add Additional Dependencies
+
+We'll use another two dependencies in our fuzzer:
+
+- `clap`, for command-line argument parsing. We'll use the `derive` feature to make
+  creating our argument parser super easy.
+- `mimalloc`, to allow our fuzzer to use a separate allocator from our target.
+
+Add them by running:
+
+
+```sh
+$ cargo add clap --features=derive
+$ cargo add mimalloc
 ```
 
 ## Create a Build Script
@@ -1033,18 +1120,751 @@ also check out the full list of special print messages
 [here](https://doc.rust-lang.org/cargo/reference/build-scripts.html).
 
 ```rust
-    println!("cargo:rustc-link-lib=first_target");
     println!(
         "cargo:rustc-link-search={}/target/first-target/debug/",
         env!("CARGO_MANIFEST_DIR")
     );
+    println!("cargo:rustc-link-lib=static=first_target");
 }
 ```
 
+# Implement The Fuzzer
+
+## Delete The Template `main.rs`
+
+We're ready to write some code. Delete the template code out of your `main.rs` file and
+add an empty `main` function like this:
+
+```rust
+fn main() {}
+```
+
+## Set The Global Allocator
+
+Rust allows us to choose any allocator we want as the global allocator that will be used
+for all our allocations. We are using the
+[mimalloc](https://github.com/microsoft/mimalloc) allocator. We can set it as the
+global allocator by adding a couple lines to our fuzzer's `main.rs` above the `main`
+function.
+
+```rust
+use mimalloc::MiMalloc;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+```
+
+This lets us use a different allocator in our fuzzer than is being called by our target,
+so when the target malloc state gets corrupted we won't crash the fuzzer.
+
+## Add An Argument Parser
+
+We want to be able to easily pass in a path to our input corpus of test cases as well
+as a directory the fuzzer should put *solutions* (or crashing inputs) when it finds them.
+
+We can implement argument parsing easily with the `clap` crate (documentation
+[here](https://docs.rs/clap/latest/clap/_derive/_tutorial/index.html)). Clap is super
+flexible and powerful, but we'll just add two arguments, the two paths we mentioned
+above. Add this to your `main.rs` above your main function.
+
+```rust
+use clap::Parser;
+
+#[derive(Parser)]
+struct Args {
+    #[arg(short, long)]
+    /// Corpus directory
+    corpus: PathBuf,
+    #[arg(short, long)]
+    /// Solutions directory
+    solutions: PathBuf,
+}
+```
+
+Now add the first line of our `main` function:
+
+```rust
+fn main() {
+    let args = Args::parse();
+}
+```
+
+### Derive Macros
+
+*Derive macros* allow us to add an *attribute* to a struct 
+that automatically adds some functionality for us. In this case, deriving `Parser`
+automatically adds the `parse` static method to the `Args` struct. Calling it will
+automatically parse command line arguments for us (including some default extras, like
+`-h` for help) and give us an initialized `Args` struct we can use to grab the two paths
+we have as arguments. We give extra info to the `derive` by adding *attributes* to the 
+fields of the struct as well, so `clap` knows we want to have short and long argument
+flags for those fields, instead of them being positional arguments.
+
+### `cargo build`
+
+When we run `cargo build`, we have seen that `cargo` will:
+
+- Run our build script
+- Build (compile) our crate
+
+When we build an executable like our fuzzer with `cargo build`, `cargo` will put the
+resulting binary in `target/debug/<EXECUTABLE_NAME>`. Let's go ahead and build our
+fuzzer:
+
+```sh
+$ cargo build
+$ ls target/debug/
+build  deps  examples  first-fuzzer  first-fuzzer.d  incremental
+```
+
+We can run our `first-fuzzer` binary:
+
+```sh
+$ ./target/debug/first-fuzzer -h
+Usage: first-fuzzer --corpus <CORPUS> --solutions <SOLUTIONS>
+
+Options:
+  -c, --corpus <CORPUS>        Corpus directory
+  -s, --solutions <SOLUTIONS>  Solutions directory
+  -h, --help                   Print help
+```
+
+If we build in the `release` profile with `cargo build --release`, instead of being
+located in the `debug` subdirectory, our binary will be in the `release` subdirectory.
+Generally, you'll use either the `debug` (default) profile or the `release` profile, and
+you should always use the `release` profile when running real fuzzing campaigns.
+Otherwise, you are leaving performance on the table!
+
+We can build and run just the same with the `release` profile:
+
+```sh
+$ cargo build --release
+$ ./target/release/first-fuzzer -h
+Finished release [optimized] target(s) in 1.33s
+     Running `target/release/first-fuzzer -h`
+Usage: first-fuzzer --corpus <CORPUS> --solutions <SOLUTIONS>
+
+Options:
+  -c, --corpus <CORPUS>        Corpus directory
+  -s, --solutions <SOLUTIONS>  Solutions directory
+  -h, --help                   Print help
+```
+
+### `cargo run`
+
+Instead of having to run `cargo build` and then run your binary, you can use `cargo run`
+as a shortcut. For example, to build and then run in release mode, we can run:
+
+
+```sh
+$ cargo run --release -- -h
+Finished release [optimized] target(s) in 1.33s
+     Running `target/release/first-fuzzer -h`
+Usage: first-fuzzer --corpus <CORPUS> --solutions <SOLUTIONS>
+
+Options:
+  -c, --corpus <CORPUS>        Corpus directory
+  -s, --solutions <SOLUTIONS>  Solutions directory
+  -h, --help                   Print help
+```
+
+This is exactly the same as building then running, it just saves a step. Note the `--`
+after the `cargo` arguments to separate arguments to `cargo` from arguments to our
+binary.
+
+From here out, we'll use `cargo run` whenever we want to run our fuzzer.
+
 ## Add a Harness
 
-The first part of our fuzzer we'll create is our harness. In our case, this is just a
-small *closure* that will call our `decode` function each time it is invoked with a new
-test case.
+The first part of our fuzzer we'll create is our harness.  A *harness* is the function
+our fuzzer will actually call directly for each test case it tests. We'll use a
+*closure* instead of defining another function, because our harness will be very short.
 
-We need to `use` a few
+### Closures
+
+Closures in rust are similar to *lambdas* in both Python and C++, and to a lesser extent
+function pointers in C. They are anonymous functions that optionally capture data from
+their surrounding scope (or, as the documentation calls it, their *environment*).
+The full scope of capabilities of closures is large and complex, so you are encouraged
+to read the [Closures Documentation](https://doc.rust-lang.org/book/ch13-01-closures.html).
+
+### Create A Harness Closure
+
+Before we can write our closure, we'll need to add a few `use` declarations from
+`libafl`. Add these at the top of your `main.rs` file:
+
+```rust
+use libafl::prelude::{BytesInput, AsSlice, HasTargetBytes, ExitKind};
+```
+
+[`BytesInput`](https://docs.rs/libafl/latest/libafl/inputs/bytes/struct.BytesInput.html)
+is a type that describes an input from the fuzzer that is just a sequence of bytes. It's
+the standard input type, although it is possible to define custom input types as we'll
+see in later exercises.
+[`BytesInput`](https://docs.rs/libafl/latest/libafl/inputs/bytes/struct.BytesInput.html)
+under the hood is just a
+[`Vec<u8>`](https://doc.rust-lang.org/nightly/alloc/vec/struct.Vec.html) with some sugar
+around it to make it easy to use in the context of a possibly distributed and
+multi-threaded fuzzer.
+
+[`HasTargetBytes`](https://docs.rs/libafl/latest/libafl/inputs/trait.HasTargetBytes.html)
+is a *trait* (which we will dive deep into later, but for now you can think of as
+similar to an *interface* in Java or a *concept* in C++) that is implemented by
+[`BytesInput`](https://docs.rs/libafl/latest/libafl/inputs/bytes/struct.BytesInput.html)
+and returns the contents of the
+[`BytesInput`](https://docs.rs/libafl/latest/libafl/inputs/bytes/struct.BytesInput.html)
+as an [`OwnedSlice<u8>`](https://docs.rs/libafl/latest/libafl/bolts/ownedref/struct.OwnedSlice.html).
+
+An
+[`OwnedSlice<T>`](https://docs.rs/libafl/latest/libafl/bolts/ownedref/struct.OwnedSlice.html)
+wraps a slice (in this case a `&[u8]`) so that it is *serializable* (we'll discuss
+serializability later) and can be sent between threads, processes, and machines over the
+network easily. LibAFL has several `Owned` types used for this purpose:
+[`OwnedRef<T>`](https://docs.rs/libafl/latest/libafl/bolts/ownedref/enum.OwnedRef.html),
+[`OwnedRefMut<T>`](https://docs.rs/libafl/latest/libafl/bolts/ownedref/enum.OwnedRefMut.html),
+[`OwnedPtr<T>`](https://docs.rs/libafl/latest/libafl/bolts/ownedref/enum.OwnedPtr.html),
+[`OwnedMutPtr<T>`](https://docs.rs/libafl/latest/libafl/bolts/ownedref/enum.OwnedMutPtr.html),
+[`OwnedSlice<T>`](https://docs.rs/libafl/latest/libafl/bolts/ownedref/struct.OwnedSlice.html)
+and
+[`OwnedMutSlice<T>`](https://docs.rs/libafl/latest/libafl/bolts/ownedref/struct.OwnedMutSlice.html).
+Each wraps the underlying type, whether it is a `&T/&mut T`, `*const T/*mut T`, or
+`&[T]/&mut [T]`.
+
+[`AsSlice`](https://docs.rs/libafl/latest/libafl/bolts/trait.AsSlice.html) is another
+trait implemented by
+[`OwnedSlice`](https://docs.rs/libafl/latest/libafl/bolts/ownedref/struct.OwnedSlice.html)
+and allows the
+[`OwnedSlice<u8>`](https://docs.rs/libafl/latest/libafl/bolts/ownedref/struct.OwnedSlice.html)
+to be converted to `&[u8]`, which we'll then input to our `decode` function.
+
+With all that knowledge, our harness closure is pretty simple. We take our
+[`BytesInput`](https://docs.rs/libafl/latest/libafl/inputs/bytes/struct.BytesInput.html),
+convert it to an
+[`OwnedSlice<u8>`](https://docs.rs/libafl/latest/libafl/bolts/ownedref/struct.OwnedSlice.html),
+convert that to a `&[u8]`, and call our target function.
+
+
+```rust
+fn main() {
+    let args = Args::parse();
+
+    let mut harness = |input: &BytesInput| {
+        let target = input.target_bytes();
+        let buf = target.as_slice();
+        println!("Fuzzing with {:?} ({})", buf, buf.len());
+        unsafe { decode(buf) };
+        ExitKind::Ok
+    }
+}
+```
+
+## Add Observers and Feedbacks
+
+We've [already discussed](#coverage-sanitizer) how we are instrumenting our target to
+keep track of coverage information, but we need a way to incorporate the information
+we get from our 8-bit edge hit counters as feedback to our fuzzer.
+
+LibAFL has two concepts that allow us to do this:
+
+### Observers
+
+An *Observer* in LibAFL implements the
+[`Observer`](https://docs.rs/libafl/latest/libafl/observers/trait.Observer.html) trait. An
+[`Observer`](https://docs.rs/libafl/latest/libafl/observers/trait.Observer.html) is very
+generic and does essentially what it sounds like: observes some state.
+[`Observer`](https://docs.rs/libafl/latest/libafl/observers/trait.Observer.html)s
+optionally implement methods that are called on events that occur each fuzzing iteration
+like `pre_exec`, `post_exec`, and so forth.
+
+The most familiar [`Observer`](https://docs.rs/libafl/latest/libafl/observers/trait.Observer.html)
+type is the [`HitcountsMapObserver`](https://docs.rs/libafl/latest/libafl/observers/map/struct.HitcountsMapObserver.html) that observes a region of memory (a bitmap) whose entries are
+incremented each time an edge or block is hit during a target execution. This is the
+model AFL++ uses by default.
+
+[`Observer`](https://docs.rs/libafl/latest/libafl/observers/trait.Observer.html)s can
+also observe other observes, that is, they can be nested. For example, a [`HitcountsMapObserver`](https://docs.rs/libafl/latest/libafl/observers/map/struct.HitcountsMapObserver.html) observes a
+[`MapObserver`](https://docs.rs/libafl/latest/libafl/observers/map/trait.MapObserver.html)
+and adds post-processing of hitcounts instead of the raw map data.
+
+We can use one of the many provided implementations, or we can define our own, like with
+everything in LibAFL.
+
+### Feedbacks
+
+A [`Feedback`](https://docs.rs/libafl/latest/libafl/feedbacks/trait.Feedback.html) is a
+trait implemented by an object that takes as input the state of an 
+[`Observer`](https://docs.rs/libafl/latest/libafl/observers/trait.Observer.html) and
+determines, after each fuzzing iteration, whether the state of the observer is
+*interesting*. This interestingness determination is entirely up to the implementer,
+although many common cases are implemented by default.
+
+For example, the
+[`AflMapFeedback`](https://docs.rs/libafl/latest/libafl/feedbacks/map/type.AflMapFeedback.html)
+implements the interestingness determination used by AFL and AFL++ given the state of a
+[`HitcountsMapObserver`](https://docs.rs/libafl/latest/libafl/observers/map/struct.HitcountsMapObserver.html).
+
+The interestingness determination from each feedback is used to determine whether a
+testcase should be kept, and further mutated, or discarded. The 
+[`AflMapFeedback`](https://docs.rs/libafl/latest/libafl/feedbacks/map/type.AflMapFeedback.html)
+keeps testcases that exercise any new control flow, whether that is exploring a
+previously unexplored edge in the CFG or exploring an explored edge a previously un-seen
+number of times (for example, an additional loop iteration).
+
+### Add Our Observers and Feedbacks
+
+<!-- TODO: Link to countersmapsobserver once it's on docs.rs --> We will use a
+[`CountersMapsObserver`]() wrapped by a
+[`HitcountsIterableMapObserver`](https://docs.rs/libafl/latest/libafl/observers/map/struct.HitcountsIterableMapObserver.html)
+to observe the state of our 8-bit instrumentation counters. The
+[`CountersMapsObserver`]() observes the state of the counters directly, and resets the
+state of the counters each iteration. The
+[`HitcountsIterableMapObserver`](https://docs.rs/libafl/latest/libafl/observers/map/struct.HitcountsIterableMapObserver.html) will wrap it and allow us to use it with the
+AFL-style feedback.
+
+We'll also us the aforementioned
+[`AflMapFeedback`](https://docs.rs/libafl/latest/libafl/feedbacks/map/type.AflMapFeedback.html)
+to determine whether inputs are interesting based on the observed hit counter states.
+
+Finally, we'll use a special feedback, the
+[`CrashFeedback`](https://docs.rs/libafl/latest/libafl/feedbacks/struct.CrashFeedback.html)
+which returns interesting if the harness crashed. We won't use this feedback to inform
+our corpus, we'll use it as an *Objective* which means if this feedback returns
+interesting, we will save the input that caused it.
+
+First, we'll add a few `use` declarations for the types we will be using. Add these
+at the top of your file.
+
+```rust
+use libafl::prelude::{AflMapFeedback, CrashFeedback, HitcountsIterableMapObserver};
+
+```
+
+Now we'll add our observers and feedbacks to our `main` function:
+
+
+```rust
+fn main() {
+    let args = Args::parse();
+
+    let mut harness = |input: &BytesInput| {
+        let target = input.target_bytes();
+        let buf = target.as_slice();
+        println!("Fuzzing with {:?} ({})", buf, buf.len());
+        unsafe { decode(buf) };
+        ExitKind::Ok
+    }
+
+    let counters_observer =
+        HitcountsIterableMapObserver::new(unsafe { counters_maps_observer("counters-maps") });
+    let counters_feedback = AflMapFeedback::new(&counters_observer);
+
+    let mut objective = CrashFeedback::new();
+}
+```
+
+Notice that we print out our buffer and its length, just so we can see what is happening
+when we run it later.
+
+## Add Random Provider, Corpus, Solution Corpus, and State
+
+This may sound like a lot of components, but for simple and even somewhat advanced
+cases, we can use the provided default implementations for all of these components.
+
+### Random Provider
+
+Random providers provide random data, generally optimized for speed because fuzzing
+does not require cryptographically secure randomness.
+
+We will use the default [`StdRand`](https://docs.rs/libafl/latest/libafl/bolts/rands/type.StdRand.html):
+
+
+Add the `use` declaration for it:
+
+```rust
+use libafl::prelude::{StdRand, current_nanos};
+```
+
+And create the random source in your `main` function:
+
+```rust
+let rand = StdRand::with_seed(current_nanos());
+```
+
+### Corpus
+
+We will keep our working corpus in memory for efficiency, so we'll want to create
+a new [`InMemoryCorpus`](https://docs.rs/libafl/latest/libafl/corpus/inmemory/struct.InMemoryCorpus.html).
+
+Add the `use` declaration for it:
+
+```rust
+use libafl::prelude::InMemoryCorpus;
+```
+
+And create a new corpus in your `main` function:
+
+```rust
+let corpus = InMemoryCorpus::new();
+```
+
+### Solution Corpus
+
+Unlike our working corpus, we want to keep any solutions we find, so we'll store them on
+disk. We can use an
+[`OnDiskCorpus`](https://docs.rs/libafl/latest/libafl/corpus/ondisk/struct.OnDiskCorpus.html)
+to store solutions (crashes) that we discover. We'll add the `use` declaration:
+
+```rust
+use libafl::prelude::OnDiskCorpus;
+```
+
+We'll create our corpus at the path we specify in our program arguments, and panic with
+an appropriate error message if the operation fails.
+
+```rust
+let solutions = OnDiskCorpus::new(&args.solutions).unwrap_or_else(|e| {
+    panic!(
+        "Unable to create OnDiskCorpus at {}: {}",
+        args.solutions.display(),
+        e
+    )
+});
+```
+
+### State
+
+Now that we have created all the parts of the fuzzer that make up the
+[`State`](https://docs.rs/libafl/latest/libafl/state/trait.State.html), we can create
+one. The [`State`](https://docs.rs/libafl/latest/libafl/state/trait.State.html) trait
+only has one default implementation. The state tracks all the information in the fuzzing
+campaign including metadata like executions, the corpus, and more.
+
+Add the `use` declarations we need:
+
+```rust
+use libafl::state::StdState;
+```
+
+And we'll create a
+[`StdState`](https://docs.rs/libafl/latest/libafl/state/struct.StdState.html) with
+our corpus, random provider, feedback, and objective:
+
+
+```rust
+let mut state = StdState::new(
+    rand,
+    corpus,
+    solutions,
+    &mut counters_feedback,
+    &mut objective,
+)
+.expect("Failed to create state");
+```
+
+
+## Add Monitor, Event Manager, Scheduler, and Fuzzer
+
+Similar to before, these components are relatively plug-and-play. They offer customization
+but we don't need to use it for such a simple fuzzer.
+
+### Monitor
+
+A [`Monitor`](https://docs.rs/libafl/latest/libafl/monitors/trait.Monitor.html) tracks
+the state of the fuzzing campaign and displays information and statistics to the user.
+There are many options for [`Monitor`](https://docs.rs/libafl/latest/libafl/monitors/trait.Monitor.html)s
+from full-featured TUIs to basic loggers. We will just print out every message we see
+to the terminal, the simplest possible logger.
+
+Add the `use` declaration:
+
+```rust
+use libafl::prelude::SimpleMonitor;
+```
+
+And create the monitor, wrapping a closure that prints its argument:
+
+```rust
+let mon = SimpleMonitor::new(|s| println!("{}", s));
+```
+
+### Event Manager
+
+The [`EventManager`](https://docs.rs/libafl/latest/libafl/events/trait.EventManager.html)
+handles events that occur during fuzzing and takes action as needed. For a single-core
+local fuzzer, this handling is simple, it primarily passes events to the `Monitor` to
+be displayed, but there are complex event managers that handle synchronization across
+machines, restart the fuzzer on specific events, and more.
+
+We'll use the [`SimpleEventmanager`](https://docs.rs/libafl/latest/libafl/events/simple/struct.SimpleEventManager.html). Add the `use` declaration:
+
+
+```rust
+use libafl::prelude::SimpleEventManager;
+```
+
+And create the manager:
+
+```rust
+let mut mgr = SimpleEventManager::new(mon);
+```
+
+### Scheduler
+
+Scheduling test cases ranges from very easy (test all cases in order as they are
+generated, or randomly) to very complex (minimization, environmental friendliness, coverage
+accounting). LibAFL of course also allows you to define new corpus scheduling methods
+as well, but for our purposes a simple queue is more than sufficient.
+
+Add the `use` declaration for the [`QueueScheduler`](https://docs.rs/libafl/latest/libafl/schedulers/queue/struct.QueueScheduler.html):
+
+```rust
+use libafl::prelude::QueueScheduler;
+```
+
+And create one:
+
+```rust
+let scheduler = QueueScheduler::new();
+```
+
+### Fuzzer
+
+Finally, we'll create the [`Fuzzer`](https://docs.rs/libafl/latest/libafl/fuzzer/trait.Fuzzer.html).
+
+The fuzzer is the frontend to execution and kicks everything off.
+
+Add the `use` declaration for it (and the `Fuzzer` trait):
+
+```rust
+use libafl::{StdFuzzer, Fuzzer};
+```
+
+And create the fuzzer:
+
+```rust
+let mut fuzzer = StdFuzzer::new(scheduler, counters_feedback, objective);
+```
+
+## Add Executor, Mutator, and Stages
+
+### Executor
+
+The final piece of the test case execution puzzle is the [`Executor`](https://docs.rs/libafl/latest/libafl/executors/trait.Executor.html). Executors provide different ways to actually run the harness, whether
+by forking then executing the harness, running it by directly calling the function,
+executing a command on the system, and more. We will use the simplest one, the
+[`InProcessExecutor`](https://docs.rs/libafl/latest/libafl/executors/inprocess/type.InProcessExecutor.html)
+which will just call our harness over and over with new testcases.
+
+Add the `use` declaration for it, and the `tuple_list` macro which we use to create
+a tuple of observers to pass in. In our case, we only have one, so we create a tuple
+of one value.
+
+```rust
+use libafl::prelude::{InProcessExecutor, tuple_list};
+```
+
+Then create the executor:
+
+
+```rust
+let mut executor = InProcessExecutor::new(
+    &mut harness,
+    tuple_list!(counters_observer),
+    &mut fuzzer,
+    &mut state,
+    &mut mgr,
+)
+.expect("Failed to create the Executor");
+```
+
+### Mutator
+
+The [`Mutator`](https://docs.rs/libafl/latest/libafl/mutators/trait.Mutator.html) is
+similar to the scheduler in terms of how complex it can become if you want it to. In our
+case, we'll again opt for the simplest option, the
+[`StdScheduledMutator`](https://docs.rs/libafl/latest/libafl/mutators/scheduled/struct.StdScheduledMutator.html).
+
+Add a `use` for the mutator and the well known *havoc* mutation strategy, which we'll
+use in our mutator.
+
+```rust
+use libafl::prelude::{StdScheduledMutator, havoc_mutations};
+```
+
+And create the mutator. 
+
+```rust
+let mutator = StdScheduledMutator::new(havoc_mutations());
+```
+
+### Stages
+
+The [`Stage`](https://docs.rs/libafl/latest/libafl/stages/trait.Stage.html)s of a
+fuzzing campaign are the set of steps the fuzzer moves through for each cycle of the
+fuzzer. These stages can include mutation (and almost always do), but can also include
+various other steps like symbolic execution, corpus minimization, synchronization
+between fuzzers, and more.
+
+For the final time, we will opt for the simplest option and use only a single mutational
+stage with our just-created havoc mutator.
+
+Add the declaration:
+
+```rust
+use std::stages::StdMutationalStage;
+```
+
+And add the mutational stage. Notice that once again, we have a `tuple_list` of one
+item. This is where we would put more stages, if we had them.
+
+```rust
+let mut stages = tuple_list!(StdMutationalStage::new(mutator));
+```
+
+## Load the Input Corpus
+
+Before we start fuzzing, we need to load our input corpus. We can load as many
+corpus entries as we want, and we will load them from our corpus directory argument.
+
+Each initial input will be executed to make sure there is some interesting feedback.
+
+This is a good litmus test to ensure your fuzzer works as intended -- if the fuzzer
+fails when loading inputs, there is likely something wrong with your observer(s) or
+feedback(s).
+
+```rust
+state
+    .load_initial_inputs(&mut fuzzer, &mut executor, &mut mgr, &[args.corpus])
+    .expect("Failed to generate the initial corpus");
+```
+
+## Start The Fuzz Loop
+
+The *very* final step, we need to actually start our fuzzer! This will start our
+fuzzer and it will run until it gets an exit condition. For this simple fuzzer, because
+we are running our harness in process, we will exit when the target crashes for the
+first time. Typically, we would continue to fuzz.
+
+```rust
+fuzzer
+    .fuzz_loop(&mut stages, &mut executor, &mut state, &mut mgr)
+    .expect("Error in the fuzzing loop");
+```
+
+# Run The Fuzzer
+
+Finally, we are done implementing our target and fuzzer. Let's run it!
+
+## Add A Corpus Entry
+
+We only really need a single corpus entry for this target, as it's quite easy. We'll
+create the corpus directory and add one file to it:
+
+```sh
+$ mkdir corpus
+$ echo 'a' > corpus/1
+```
+
+## Launch the Fuzzer
+
+We can now launch the fuzzer by running:
+
+```sh
+$ cargo run --release -- -c corpus -s solutions
+```
+
+The fuzzer should run, then exit somewhat quickly (again, this is a very easy target).
+
+You'll see some output like:
+
+```
+Fuzzing with [196, 196, 196, 196, 196, 196, 196, 196, 128, 0, 196, 196, 196, 196, 4, 0, 196, 11, 196, 196, 196, 196, 196, 4, 0, 77, 77, 77, 77, 77, 77, 77, 77, 205, 179, 196] (36)
+Fuzzing with [90, 90, 90, 90, 90, 90] (6)
+Fuzzing with [128, 0, 127, 94, 66] (5)
+Fuzzing with [196, 196] (2)
+Fuzzing with [45] (1)
+Fuzzing with [239, 239, 239, 239, 239, 239, 239, 239, 239, 241, 255, 16, 240, 243] (14)
+Fuzzing with [37, 64, 64, 64, 64, 64, 64, 37, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 37, 135] (33)
+[Objective #0] run time: 0h-0m-0s, clients: 1, corpus: 8, objectives: 1, executions: 28, exec/sec: 0.000
+```
+
+This means we have reached an objective!
+
+## Triage The Crash
+
+Run the fuzzer a few times and confirm you see an objective each time. We can then view
+the crashes in the `solutions` directory:
+
+
+```sh
+$ ls solutions
+26c0aa3cb05a20f7  6b47dcc6e8baf69e  6f40a2bea93ee0a3  71fd31f6e02fb1d5  a3ee050a83870a18  e54c970569a44481  e552cbba2b3e2764
+```
+
+We'll create a test case for all these crashes. Create a `testcases` directory in your
+`first-target` crate, and copy all the inputs into it:
+
+```sh
+$ cd /path/to/first-target
+$ mkdir testcases
+$ cp ../first-fuzzer/solutions/* ./testcases
+```
+
+
+Then, add a test case to `mod tests` in your `lib.rs`:
+
+
+```rust
+    #[test]
+    fn it_crashed_by_fuzzer() {
+        let test = include_bytes!("../testcases/26c0aa3cb05a20f7");
+        decode(test);
+        let test = include_bytes!("../testcases/6b47dcc6e8baf69e");
+        decode(test);
+        let test = include_bytes!("../testcases/6f40a2bea93ee0a3");
+        decode(test);
+        let test = include_bytes!("../testcases/71fd31f6e02fb1d5");
+        decode(test);
+        let test = include_bytes!("../testcases/a3ee050a83870a18");
+        decode(test);
+        let test = include_bytes!("../testcases/e54c970569a44481");
+        decode(test);
+        let test = include_bytes!("../testcases/e552cbba2b3e2764");
+        decode(test);
+    }
+```
+
+Running `cargo test` should crash with these inputs (you can separate them into individual
+test functions to narrow down which inputs are problematic), and as a developer you could
+then debug your program to find the root cause using these crashing inputs.
+
+# Summary
+
+In this exercise, we learned:
+
+- About creating rust library and binary crates
+- How to add dependencies
+- What LibAFL_Targets does
+- How to choose and create a good fuzz target
+- About Rust memory and ownership semantics
+- How to unsafely allocate memory
+- How to implement a simple decoder
+- How to unit test a rust function
+- How to instrument a library with SanitizerCoverage
+- How to link a fuzzer with a static library
+- How to set a new global allocator
+- How to create a fuzzer using LibAFL including all its components
+  - Observers
+  - Feedbacks
+  - Fuzzers
+  - Monitors
+  - Mutators
+  - Schedulers
+  - Stages
+  - Executors
+  - ...
+- How to parse command line arguments
+- How to find crashing inputs using a fuzzer and fix the bugs that cause them
+
+
+
