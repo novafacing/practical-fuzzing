@@ -781,9 +781,6 @@ the `unsafe` code we are running here truly is *unsafe*. Because we don't calcul
 buffer size correctly, these writes can go out of bounds of the allocated memory,
 causing heap corruption.
 
-You can find the full code for the implemented function in
-[lib.rs](../first-target-solution/src/main.rs).
-
 ## Test the Fuzz Target
 
 Like any good developers, we will create a few unit tests for our code before we worry
