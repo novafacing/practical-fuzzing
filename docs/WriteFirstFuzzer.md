@@ -899,7 +899,8 @@ In this section, we learned about:
 - Triaging a simple heap overflow by searching on GitHub
 
 <!--TODO -->
-You can view the finished 
+You can view the completed source for the fuzz target
+[here](https://github.com/intel-sandbox/documentation.security.fuzzing.libafl/blob/solutions/first-target/src/lib.rs).
 
 # Create The Fuzzer
 
@@ -1869,6 +1870,9 @@ test functions to narrow down which inputs are problematic), and as a developer 
 then debug your program to find the root cause using these crashing inputs.
 
 # Summary
+
+You can view the completed source for the fuzzer
+[here](https://github.com/intel-sandbox/documentation.security.fuzzing.libafl/tree/solutions/first-fuzzer)
 
 In this exercise, we learned:
 
