@@ -903,7 +903,7 @@ In this section, we learned about:
 
 <!--TODO -->
 You can view the completed source for the fuzz target
-[here](https://github.com/intel-sandbox/documentation.security.fuzzing.libafl/blob/solutions/first-target/src/lib.rs).
+[here](https://github.com/intel-sandbox/documentation.security.fuzzing.libafl/blob/solutions-first-fuzzer/first-target/src/lib.rs).
 
 # Create The Fuzzer
 
@@ -1880,7 +1880,7 @@ then debug your program to find the root cause using these crashing inputs.
 # Summary
 
 You can view the completed source for the fuzzer
-[here](https://github.com/intel-sandbox/documentation.security.fuzzing.libafl/tree/solutions/first-fuzzer)
+[here](https://github.com/intel-sandbox/documentation.security.fuzzing.libafl/tree/solutions-first-fuzzer/first-fuzzer)
 
 In this exercise, we learned:
 
