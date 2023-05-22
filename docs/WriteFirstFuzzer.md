@@ -555,8 +555,10 @@ use std::{
     str::from_utf8_unchecked,
 };
 
+const DEFAULT_BUFFER_SIZE: usize = 128;
+
 pub fn decode(encoded_input: &[u8]) -> Vec<u8> {
-    let decoded_len =
+    let decoded_len = DEFAULT_BUFFER_SIZE +
         encoded_input.len() - (encoded_input.iter().filter(|c| **c == b'%').count() * 2);
       
     if decoded_len <= 0 {
@@ -574,8 +576,10 @@ pub fn decode(encoded_input: &[u8]) -> Vec<u8> {
 
 There are a few things going on here. We'll go step by step. First, we filter our
 encoded input for '%' characters and count them, then subtract double that count from
-the length of the encoded input to find the length of the decoded data. Remember, this
-is an *intentional bug* because of various nuances in the decoding process.
+the length of the encoded input to find the length of the decoded data. We'll also add a
+constant `128` to our buffer size, to make our fuzzer at least do a little bit of work
+to find this bug.Remember, this is an *intentional bug* because of various nuances in
+the decoding process.
 
 Next, we create a `Layout` (a description of an element size and length of an array of
 `u8`s) of the length we just calculated. Notice the syntax of the `Layout` constructor
@@ -607,6 +611,8 @@ use std::{
     alloc::{alloc, Layout},
     str::from_utf8_unchecked,
 };
+
+
 pub fn decode(mut encoded_input: &[u8]) -> Vec<u8> {
     /* ... Code from above ... */
     loop {
@@ -1806,23 +1812,28 @@ The fuzzer should run, then exit somewhat quickly (again, this is a very easy ta
 You'll see some output like:
 
 ```
-Fuzzing with [196, 196, 196, 196, 196, 196, 196, 196, 128, 0, 196, 196, 196, 196, 4, 0, 196, 11, 196, 196, 196, 196, 196, 4, 0, 77, 77, 77, 77, 77, 77, 77, 77, 205, 179, 196] (36)
-Fuzzing with [90, 90, 90, 90, 90, 90] (6)
-Fuzzing with [128, 0, 127, 94, 66] (5)
-Fuzzing with [196, 196] (2)
-Fuzzing with [45] (1)
-Fuzzing with [239, 239, 239, 239, 239, 239, 239, 239, 239, 241, 255, 16, 240, 243] (14)
-Fuzzing with [37, 64, 64, 64, 64, 64, 64, 37, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 37, 135] (33)
-[Objective #0] run time: 0h-0m-0s, clients: 1, corpus: 8, objectives: 1, executions: 28, exec/sec: 0.000
+Fuzzing with [37, 37, 37, 37, 37, 112, 37, 127, 127, 127, 127, 127, 112, 63, 66, 63, 63, 63, 63, 63, 66, 46, 63, 63, 63, 37, 37, 37, 92, 148, 148, 148, 148, 37, 37, 92, 157, 157, 157, 157, 157, 157, 99, 157, 157, 157, 92, 92, 31, 37, 37, 38, 37, 37, 37, 37, 37, 37, 37, 120, 120, 37, 37, 37, 5, 37] (66)
+Fuzzing with [148, 148, 148, 148, 148, 148, 148, 148, 3, 37, 37, 58, 176, 176, 176, 37, 37, 176, 176, 175, 37, 37, 37, 37, 37, 37, 142, 142, 176, 176, 176, 37, 37, 37, 37, 37, 37, 37, 36, 37, 37, 92, 37, 37, 37] (45)
+Fuzzing with [0, 42] (2)
+Fuzzing with [137, 137, 137, 137, 137, 137, 137, 137, 137, 137, 137, 137, 137, 27, 37, 37, 37, 37, 37, 37, 36, 219, 92, 4, 0, 37, 37, 39, 26, 37, 162, 176, 176, 109, 153, 153, 92, 92, 93, 65, 109, 153, 134, 153, 153, 0, 0, 0, 0, 153, 37, 37, 92, 92, 92, 92, 92, 153, 134, 153, 153, 0, 0, 0, 0, 153, 37, 38, 93, 0, 0, 0, 0, 92, 94, 92, 92, 153, 153] (79)
+Fuzzing with [37, 37, 37, 37, 37, 37, 37, 37, 37, 176, 176, 176, 37, 37, 37, 37, 37, 37, 37, 36, 37, 92, 92, 37, 37, 37, 37, 37, 37, 176, 176, 176, 37, 37, 37, 92, 92, 92, 92, 92, 92, 92, 92, 92, 92, 92, 92, 37, 37, 37, 92, 0, 0, 16, 0, 92, 92, 92, 92, 92, 92, 92, 92, 37, 37, 37, 38, 37, 37, 37, 37, 37, 37, 37, 37, 37] (76)
+Fuzzing with [7, 7, 100, 0, 0, 0, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 6, 229, 7, 7, 100, 101, 100, 100, 100, 100, 155, 100] (28)
+Fuzzing with [1, 143, 37, 1, 124, 124, 143, 143, 143, 143] (10)
+Fuzzing with [37, 37, 37, 37, 37, 37, 37, 37, 92, 148, 37, 37, 37, 92, 148, 148, 148, 148, 148, 148, 148, 148, 148, 3, 37, 37, 37, 176, 176, 176, 37, 37, 176, 176, 176, 37, 37, 37, 37, 37, 37, 176, 176, 176, 37, 37, 37, 37, 37, 37, 37, 36, 37, 92, 92, 37, 37, 37, 37, 37, 37, 176, 176, 176, 37, 37, 37, 92, 92, 92, 92, 92, 92, 92, 92, 92, 92, 92, 92, 37, 37, 37, 92, 0, 0, 1, 0, 92, 92, 92, 92, 92, 92, 92, 92, 37, 37, 37, 38, 37, 37, 37, 0, 127, 37, 37, 37, 37] (108)
+Fuzzing with [252, 241, 241, 0, 7, 101, 252, 11, 119, 0, 100, 101, 252, 11, 119, 153, 227, 7, 7, 7, 7, 7, 7, 23, 102, 69, 112, 72, 200, 102, 37, 37, 37, 37, 37, 37, 37, 37, 92, 148, 148, 148, 148, 148, 148, 148, 148, 148, 3, 38, 37, 37, 176, 176, 176, 37, 37, 176, 176, 176, 37, 37, 37, 37, 38, 37, 176, 176, 176, 37, 37, 37, 37, 37, 37, 37, 36, 37, 92, 92, 37, 37, 37, 37, 37, 37, 176, 176, 176, 37, 37, 37, 92, 92, 92, 92, 92, 92, 92, 92, 92, 92, 92, 92, 37, 37, 37, 90, 0, 0, 1, 0, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 92, 92, 92, 92, 37, 37, 38, 37, 176, 176, 176, 0, 127, 37, 37, 37, 37, 37, 36, 37, 92, 92, 92, 92, 37, 37, 37, 38, 37, 37, 37, 37, 37, 37, 37, 73, 73] (160)
+[Objective #0] run time: 0h-0m-0s, clients: 1, corpus: 43, objectives: 1, executions: 2179, exec/sec: 0.000
 ```
 
-This means we have reached an objective!
+This means we have reached an objective! Notice that this fuzzer runs very fast, not
+even 1 second for our 2179 executions. Speed is a major advantage of LibAFL over AFL++
+and other fuzzers, because reaching this speed on a single core in AFL++ is non-trivial
+and requires work, whereas with LibAFL we can hit this kind of speed with the simplest
+possible fuzzer!
 
 ## Triage The Crash
 
 Run the fuzzer a few times and confirm you see an objective each time. We can then view
 the crashes in the `solutions` directory:
-
 
 ```sh
 $ ls solutions
