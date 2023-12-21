@@ -293,6 +293,9 @@ $volumeInfo = $diskImage | Get-Volume
 mountvol W: $volumeInfo.UniqueId
 ```
 
+Note that after a reboot or sleep, you may need to run this command again
+to re-mount the disk image.
+
 ### Test the Build Environment
 
 We can now launch the build environment by running:
@@ -321,6 +324,7 @@ Make sure to exit the `cmd` environment after using it and return to PowerShell:
 ```cmd
 exit
 ```
+
 
 ## Installing Development Tools
 
@@ -423,6 +427,17 @@ cmake --version
 
 Both commands should succeed.
 
+## Installing Visual Studio Community
+
+We will use the EWDK to build the vulnerable driver, but because we will be using
+LibFuzzer to fuzz the driver from user-space, we also need to install Visual Studio
+Community with the proper workloads to obtain the LibFuzzer implementation.
+
+```powershell
+winget install Microsoft.VisualStudio.2022.Community --silent --override "--wait --quiet --addProductLang En-us --add Microsoft.VisualStudio.Workload.NativeDesktop --add Microsoft.VisualStudio.Component.VC.ASAN --add Microsoft.VisualStudio.Component.VC.ATL --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows11SDK.22621 --add Microsoft.Component.VC.Runtime.UCRTSDK --add Microsoft.VisualStudio.Workload.CoreEditor"
+```
+
+
 ## Clone and Build HEVD
 
 We will use [HackSys Extreme Vulnerable Driver
@@ -479,3 +494,213 @@ d-----        12/20/2023   7:17 PM                Release
 ```
 
 If so, we're in business!
+
+## Install the Code Signing Certificate
+
+Windows does not permit loading drivers signed with untrusted certificates,
+so we need to both import our untrusted certificate and enable test
+signing. From the `HackSysExtremeVulnerableDriver\Driver` directory, run the following to enable test signing and reboot (which is required after enabling test signing):
+
+```powershell
+certutil -importPFX HEVD\Windows\HEVD.pfx
+bcdedit -set TESTSIGNING on
+bcdedit -set loadoptions DISABLE_INTEGRITY_CHECKS
+shutdown /r /f /t 0
+```
+
+Once the Virtual Machine reboots, you can reconnect with `ssh -p 2222 user@localhost`.
+
+## Create and Start the Driver Service
+
+We'll create a service for the driver and start it.
+
+```powershell
+sc.exe create HEVD type= kernel binPath= C:\Users\user\HackSysExtremeVulnerableDriver\Driver\build\HEVD\Windows\HEVD.sys
+sc.exe start HEVD
+```
+
+You should see:
+
+
+```txt
+
+SERVICE_NAME: HEVD 
+        TYPE               : 1  KERNEL_DRIVER  
+        STATE              : 4  RUNNING 
+                                (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+        WIN32_EXIT_CODE    : 0  (0x0)
+        SERVICE_EXIT_CODE  : 0  (0x0)
+        CHECKPOINT         : 0x0
+        WAIT_HINT          : 0x0
+        PID                : 0
+        FLAGS              :
+```
+
+This means our vulnerable driver is now running.
+
+## Create a Fuzz Harness
+
+We'll create a directory `~/fuzzer` where we'll create and run our fuzz harness:
+
+```powershell
+mkdir ~/fuzzer
+cd ~/fuzzer
+```
+
+We're going to use LibFuzzer to fuzz the driver via its IOCTL interface. The handler for
+the interface is defined
+[here](https://github.com/novafacing/HackSysExtremeVulnerableDriver/blob/master/Driver/HEVD/Windows/BufferOverflowStack.c).
+
+Essentially, if we pass more than `512 * 4 = 2048` bytes of data, we will begin to
+overflow the stack buffer. Create `fuzzer.c` by running `vim fuzzer.c`.
+
+We'll start by including `windows.h` for the Windows API and `stdio.h` so we can print.
+
+```c
+#include <windows.h>
+#include <stdio.h>
+```
+
+Next, we need to define the [control
+code](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d4drvif/nf-d4drvif-ctl_code)
+for the driver interface. The device servicing IOCTL we are triggering is not a
+pre-specified [file
+type](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/specifying-device-types),
+so we access it with an unknown type. We grab the control code for the handler we want
+from the [driver source
+code](https://github.com/novafacing/HackSysExtremeVulnerableDriver/blob/master/Driver/HEVD/Windows/HackSysExtremeVulnerableDriver.h).
+Note that in the handler, we can see this is a type 3 IOCTL handler (AKA
+`METHOD_NEITHER`) and that we want RW access to the driver file.
+
+```c
+#define HACKSYS_EVD_IOCTL_STACK_OVERFLOW CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800, METHOD_NEITHER, FILE_ANY_ACCESS)
+```
+
+Next, we'll define our device name, a handle for the device once we open it, and a
+global flag to check whether the device is initialized/opened. We could have also used
+the [Startup initialization](https://llvm.org/docs/LibFuzzer.html#startup-initialization)
+interface to LibFuzzer, but since we don't really need access to `argv`, we follow the
+guidance to use a statically initialized global object.
+
+```c
+const char g_devname[] = "\\\\.\\HackSysExtremeVulnerableDriver";
+HANDLE g_device = INVALID_HANDLE_VALUE;
+BOOL g_device_initialized = FALSE;
+```
+
+Now we can declare our fuzz driver. Since we're compiling as C code, note we do not
+declare the function as `extern "C"`, but if we were compiling as C++ we would need to
+do this.
+
+```c
+int LLVMFuzzerTestOneInput(const BYTE *data, size_t size) {
+```
+
+This function will be called in a loop with new inputs each time by the fuzz driver.
+
+The first thing we need to do is check if the device handle is initialized, and
+initialize it if not.
+
+```c
+    if (!g_device_initialized) {
+        printf("Initializing device\n");
+
+        if ((g_device = CreateFileA(g_devname,
+            GENERIC_READ | GENERIC_WRITE,
+            0,
+            NULL,
+            OPEN_EXISTING,
+            0,
+            NULL
+        )) == INVALID_HANDLE_VALUE) {
+            printf("Failed to initialize device\n");
+            return -1;
+        }
+        printf("Initialized device\n");
+        g_device_initialized = TRUE;
+    }
+```
+
+Returning `-1` from `LLVMFuzzerTestOneInput` indicates a bad input, but we will also
+use it here to indicate an initialization error.
+
+We'll also add a print for ourselves to let us know if the buffer *should* be overflowed
+by an input.
+
+```c
+    if (size > 2048) {
+        printf("Overflowing buffer!\n");
+    }
+```
+
+Finally, we'll call `DeviceIoControl` to interact with the driver by passing our input
+data to the IOCTL interface.
+
+```c
+    DWORD size_returned = 0;
+
+    BOOL is_ok = DeviceIoControl(g_device,
+        HACKSYS_EVD_IOCTL_STACK_OVERFLOW,
+        (BYTE *)data,
+        (DWORD)size,
+        NULL, //outBuffer -> None
+        0, //outBuffer size -> 0
+        &size_returned,
+        NULL
+    );
+
+    if (!is_ok) {
+        printf("Error in DeviceIoControl\n");
+        return -1;
+    }
+
+    return 0;
+}
+```
+
+## Compile the Fuzz Harness
+
+That's all we need to test the driver from user-space. We can now compile the harness by
+entering the Build Environment for VS Community (not the EWDK, because it lacks
+SanitizerCoverage and LibFuzzer):
+
+```powershell
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\Launch-VsDevShell.ps1' -Arch amd64
+cl /fsanitize=fuzzer /fsanitize-coverage=edge /fsanitize-coverage=trace-cmp /fsanitize-coverage=trace-div fuzzer.c
+```
+
+## Run the Fuzz Harness
+
+Now we just run:
+
+```powershell
+./fuzzer.exe
+```
+
+And start testing the driver! The first thing we'll see is that it runs *really* quite
+fast, which is great. If we let the fuzzer run long enough, it'll eventually decide to
+generate an input that overflows the buffer, but it may take some time because we
+currently have no *feedback* from the driver we're testing -- only from the fuzzer
+program itself. This is "dumb fuzzing" at its finest, and we'll walk through the
+various options to improve the situation, starting with the easiest.
+
+## Extend the Length Faster
+
+If we run our binary with `-help=1`, LibFuzzer will helpfully inform us of all the
+different options to pass to the fuzzer to control its behavior.
+
+```powershell
+./fuzzer.exe -help=1
+```
+
+The first thing we can adjust is the `len_control` option. Let's try setting it to `0`,
+which will tell the fuzzer not to wait before extending the input to be very long.
+
+```powershell
+./fuzzer.exe -len_control=0
+```
+
+![](images/2023-12-21-14-27-35.png)
+
+Boop! That did it. In many cases, this is all you need to discover trivial buffer
+overflows.
