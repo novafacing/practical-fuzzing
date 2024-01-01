@@ -2,7 +2,7 @@
 
 [Introduction](README.md)
 
-- [User-Space Fuzzing with LibFuzzer](libfuzzer/user-space/README.md)
+<!-- - [User-Space Fuzzing with LibFuzzer](libfuzzer/user-space/README.md) -->
 - [Windows Kernel Fuzzing with LibFuzzer](libfuzzer/kernel/windows/README.md)
   1. [Set Up Development Environment](libfuzzer/kernel/windows/development-environment.md)
   2. [Clone and Build HEVD](libfuzzer/kernel/windows/clone-and-build-hevd.md)
@@ -79,8 +79,7 @@
   60. [Launch the Fuzzer](libafl/fuzzing-rust/launch-the-fuzzer.md)
   61. [Triage The Crash](libafl/fuzzing-rust/triage-the-crash.md)
   62. [Summary](libafl/fuzzing-rust/summary-1.md)
-- [Fuzzing C/C++ with LibAFL](libafl/fuzzing-c-cpp/README.md)
-
+<!-- - [Fuzzing C/C++ with LibAFL](libafl/fuzzing-c-cpp/README.md) -->
 - [Docker Dev Container](development-environments/devcontainer/README.md)
     - [Windows Host](development-environments/devcontainer/windows.md)
     - [Linux Host](development-environments/devcontainer/linux.md)
