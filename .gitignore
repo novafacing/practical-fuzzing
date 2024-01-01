@@ -1,5 +1,1 @@
-/target
-/Cargo.lock
-.env
-/*-fuzzer
-target/
+book
